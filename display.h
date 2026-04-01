@@ -19,7 +19,7 @@ void drawByte(uint8_t x, uint8_t y, uint8_t b);
 uint8_t getByte(uint8_t x, uint8_t y);
 void drawPixel(int8_t x, int8_t y, bool color, bool raycasterViewport);
 void drawVLine(uint8_t x, int8_t start_y, int8_t end_y, uint8_t intensity);
-void drawSprite(int8_t x, int8_t y, const uint8_t bitmap[], const uint8_t mask[], int16_t w, int16_t h, uint8_t sprite, double distance);
+void drawSprite(int8_t x, int8_t y, const uint8_t bitmap[], const uint8_t mask[], int8_t w, int8_t h, uint8_t sprite, double distance);
 void drawChar(int8_t x, int8_t y, char ch);
 void drawText(int8_t x, int8_t y, char *txt, uint8_t space = 1);
 void drawText(int8_t x, int8_t y, const __FlashStringHelper txt, uint8_t space = 1);
@@ -38,17 +38,19 @@ uint8_t *display_buf;
 
 // We don't handle more than MAX_RENDER_DEPTH depth, so we can safety store
 // z values in a byte with 1 decimal and save some memory,
-uint8_t zbuffer[ZBUFFER_SIZE];
+uint16_t zbuffer[ZBUFFER_SIZE];
 
 void setupDisplay() {
   // Setup display
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Fixed from 0x3D
-    Serial.println(F("SSD1306 allocation failed"));
+    
     while (1); // Don't proceed, loop forever
   }
-    display.clearDisplay();
-    // display.setRotation(2); // Doesn't work with optimized drawing, maybe because of the way it handles the buffer. To be investigated.
+
+  // Clear the Adafruit splash screen
+  display.clearDisplay();
+  display.display();
 
 #ifdef OPTIMIZE_SSD1306
   display_buf = display.getBuffer();
@@ -125,7 +127,7 @@ void drawPixel(int8_t x, int8_t y, bool color, bool raycasterViewport = false) {
 void drawVLine(uint8_t x, int8_t start_y, int8_t end_y, uint8_t intensity) {
   int8_t y;
   int8_t lower_y = max(min(start_y, end_y), (int8_t)0);
-  int8_t higher_y = min(max(start_y, end_y), (int8_t)((int8_t)RENDER_HEIGHT - 1));
+  int8_t higher_y = min(max(start_y, end_y), (int8_t)(RENDER_HEIGHT - 1));
   uint8_t c;
 
 #ifdef OPTIMIZE_SSD1306
@@ -271,7 +273,7 @@ void drawText(int8_t x, int8_t y, const __FlashStringHelper *txt_p, uint8_t spac
 }
 
 // Draw an integer (3 digit max!)
-void drawText(uint8_t x, uint8_t y, uint8_t num) {
+void drawText(uint8_t x, uint8_t y, int16_t num) {
   char buf[4]; // 3 char + \0
   itoa(num, buf, 10);
   drawText(x, y, buf);

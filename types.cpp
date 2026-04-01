@@ -3,7 +3,6 @@
 #include "types.h"
 #include "constants.h"
 
-#define sq(x) ((x) * (x))
 
 Coords create_coords(double x, double y) {
   return { x, y };

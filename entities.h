@@ -10,6 +10,12 @@
     create_coords(0, -0.66), \
     0, \
     100,  \
+    10, \
+    0, \
+    0, \
+    0, \
+    0, \
+    false, \
   }
 
 #define create_enemy(x, y)            create_entity(E_ENEMY, x, y, S_STAND, 100)
@@ -25,8 +31,7 @@
 #define S_HIT                 4
 #define S_DEAD                5
 #define S_HIDDEN              6
-#define S_OPEN                7
-#define S_CLOSE               8
+
 
 struct Player { 
   Coords pos;
@@ -34,7 +39,12 @@ struct Player {
   Coords plane;
   double velocity;
   uint8_t health;
-  uint8_t keys;  
+  uint8_t keys;
+  uint8_t secret;
+  uint8_t secret2;
+  uint8_t secret3;
+  int16_t score;
+  bool cheats;
 };
 
 struct Entity {
@@ -44,6 +54,8 @@ struct Entity {
   uint8_t health;     // angle for fireballs
   uint8_t distance;
   uint8_t timer;
+  bool a;
+  bool b;
 };
 
 struct StaticEntity  { 
