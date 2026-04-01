@@ -1,0 +1,100 @@
+#ifndef _sound_h
+#define _sound_h
+
+#include "constants.h"
+#include <driver/ledc.h>
+
+// ---------------------------------------------------------------------------
+// Sound data (no PROGMEM needed on ESP32 — everything lives in RAM/flash)
+// Format: Inverse Frequency Sound (Wolfenstein 3D / id Software)
+// Each byte encodes a pitch: freq = 1192030 / (60 * byte_value)
+// 0x00 = silence
+// ---------------------------------------------------------------------------
+
+constexpr uint8_t SHOOT_SND_LEN = 27;
+constexpr uint8_t shoot_snd[] = { 0x10,0x10,0x10,0x6e,0x2a,0x20,0x28,0x28,0x9b,0x28,0x20,0x20,0x21,0x57,0x20,0x20,0x20,0x67,0x20,0x20,0x29,0x20,0x73,0x20,0x20,0x20,0x89 };
+
+constexpr uint8_t GET_KEY_SND_LEN = 90;
+constexpr uint8_t get_key_snd[] = { 0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x24,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x20,0x20,0x20,0x20,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x20,0x20,0x20,0x20,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x37,0x20,0x20,0x20,0x20,0x20,0x20,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19,0x19 };
+
+constexpr uint8_t HIT_WALL_SND_LEN = 8;
+constexpr uint8_t hit_wall_snd[] = { 0x83,0x83,0x82,0x8e,0x8a,0x89,0x86,0x84 };
+
+constexpr uint8_t WALK1_SND_LEN = 3;
+constexpr uint8_t walk1_snd[] = { 0x8f,0x8e,0x8e };
+
+constexpr uint8_t WALK2_SND_LEN = 3;
+constexpr uint8_t walk2_snd[] = { 0x84,0x87,0x84 };
+
+constexpr uint8_t MEDKIT_SND_LEN = 69;
+constexpr uint8_t medkit_snd[] = { 0x55,0x20,0x3a,0x3a,0x3a,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x33,0x33,0x33,0x33,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x26,0x26,0x26,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x16,0x16,0x16,0x16,0x16,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x16,0x16,0x16,0x16,0x16,0x16,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x15,0x15,0x15,0x15,0x15,0x15,0x15 };
+
+// ---------------------------------------------------------------------------
+// Playback state
+// ---------------------------------------------------------------------------
+
+volatile uint8_t          idx     = 0;
+volatile bool             sound   = false;
+volatile const uint8_t*   snd_ptr = nullptr;
+volatile uint8_t          snd_len = 0;
+
+hw_timer_t* snd_timer = nullptr;
+
+// ---------------------------------------------------------------------------
+// Timer ISR — replaces AVR's TIMER2_COMPA_vect
+// Fires at ~139.5 Hz (every 7168 µs), same rate as the original
+// ---------------------------------------------------------------------------
+
+void IRAM_ATTR onSoundTimer() {
+  if (!sound) return;
+
+  if (idx < snd_len) {
+    uint8_t val = snd_ptr[idx++];
+    if (val == 0) {
+      ledcWriteTone(0, 0);           // explicit silence byte
+    } else {
+      uint16_t freq = 1192030 / (60 * (uint16_t)val);
+      ledcWriteTone(0, freq);
+    }
+  } else {
+    // Finished — stop
+    ledcWriteTone(0, 0);
+    idx   = 0;
+    sound = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+void sound_init() {
+  ledcSetup(0, 1000, 8);          // channel 0, 1 kHz base, 8-bit resolution
+  ledcAttachPin(SOUND_PIN, 0);
+
+  // Timer: 80 prescaler on 80 MHz APB clock → 1 MHz tick (1 µs resolution)
+  // Alarm at 7168 ticks = 7168 µs ≈ 139.5 Hz  (matches original AVR rate)
+  snd_timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(snd_timer, &onSoundTimer, true);
+  timerAlarmWrite(snd_timer, 7168, true);
+  timerAlarmEnable(snd_timer);
+}
+
+void playSound(const uint8_t* snd, uint8_t len) {
+  // Reset and kick off — ISR takes it from here
+  sound   = false;          // pause ISR briefly while we update state
+  idx     = 0;
+  snd_ptr = snd;
+  snd_len = len;
+  sound   = true;
+}
+
+void setFrequency(uint16_t freq) {
+  ledcWriteTone(0, freq);
+}
+
+void off() {
+  ledcWriteTone(0, 0);
+}
+
+#endif
