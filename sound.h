@@ -37,56 +37,68 @@ volatile uint8_t          idx     = 0;
 volatile bool             sound   = false;
 volatile const uint8_t*   snd_ptr = nullptr;
 volatile uint8_t          snd_len = 0;
+uint8_t music = 0;
 
 hw_timer_t* snd_timer = nullptr;
 
-// ---------------------------------------------------------------------------
-// Timer ISR — replaces AVR's TIMER2_COMPA_vect
-// Fires at ~139.5 Hz (every 7168 µs), same rate as the original
-// ---------------------------------------------------------------------------
-
+// Use IRAM_ATTR to ensure the code stays in internal RAM
 void IRAM_ATTR onSoundTimer() {
-  if (!sound) return;
+  if (!sound || snd_ptr == nullptr) return;
 
   if (idx < snd_len) {
-    uint8_t val = snd_ptr[idx++];
-    if (val == 0) {
-      ledcWriteTone(0, 0);           // explicit silence byte
+    uint8_t val = snd_ptr[idx];
+    if (val != 0) {
+      // Wolfenstein frequency formula
+      uint32_t frequency = 1192030 / (60 * val);
+      // In 2.x, ledcWriteTone is available and works great
+      ledcWriteTone(0, frequency); 
     } else {
-      uint16_t freq = 1192030 / (60 * (uint16_t)val);
-      ledcWriteTone(0, freq);
+      ledcWriteTone(0, 0); 
     }
+    idx++;
   } else {
-    // Finished — stop
-    ledcWriteTone(0, 0);
-    idx   = 0;
     sound = false;
+    ledcWriteTone(0, 0);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 void sound_init() {
-  ledcSetup(0, 1000, 8);          // channel 0, 1 kHz base, 8-bit resolution
+  // 1. Setup LEDC (Classic 2.x syntax)
+  // Channel 0, 1000Hz base, 8-bit resolution
+  ledcSetup(0, 1000, 8);
   ledcAttachPin(SOUND_PIN, 0);
 
-  // Timer: 80 prescaler on 80 MHz APB clock → 1 MHz tick (1 µs resolution)
-  // Alarm at 7168 ticks = 7168 µs ≈ 139.5 Hz  (matches original AVR rate)
-  snd_timer = timerBegin(0, 80, true);
+  // 2. Setup Timer (Classic 2.x syntax)
+  // Timer 0, Divider 80 (80MHz / 80 = 1 tick per microsecond)
+  // 'true' for count up
+  snd_timer = timerBegin(0, 160, true);
+
+  // 3. Attach the ISR function
   timerAttachInterrupt(snd_timer, &onSoundTimer, true);
-  timerAlarmWrite(snd_timer, 7168, true);
+
+  // 4. Set the alarm
+  // 7142 microseconds = ~140Hz
+  // 'true' to reload the timer (auto-loop)
+  timerAlarmWrite(snd_timer, 7142, true);
+
+  // 5. Enable the timer
   timerAlarmEnable(snd_timer);
 }
 
 void playSound(const uint8_t* snd, uint8_t len) {
-  // Reset and kick off — ISR takes it from here
-  sound   = false;          // pause ISR briefly while we update state
-  idx     = 0;
+  if (snd_timer == nullptr) return;
+
+  // 1. Pause the timer interrupt so it doesn't fire while we swap data
+  timerAlarmDisable(snd_timer);
+
+  // 2. Load the new sound
   snd_ptr = snd;
   snd_len = len;
-  sound   = true;
+  idx = 0;
+  sound = true;
+
+  // 3. Re-enable the timer to start the new sound immediately
+  timerAlarmEnable(snd_timer);
 }
 
 void setFrequency(uint16_t freq) {
